@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 # Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
+# Copyright 2023 Matthew Sheydwasser
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +23,7 @@ import sys
 import socket
 import re
 # you may use urllib to encode data appropriately
-import urllib.parse
+from urllib.parse import urlparse
 
 def help():
     print("httpclient.py [GET/POST] [URL]\n")
@@ -33,7 +34,9 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self,url):
+        return (socket.gethostbyname(url))
+
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,7 +44,8 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        code = self.recvall(self.socket)
+        return code
 
     def get_headers(self,data):
         return None
@@ -68,13 +72,39 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+        # print('/////////')
+        # print(self.get_code(url))
+        # data = url.split('/')
+        # data = data[2:]
+        
+        # addr = (data.pop(0)).split(':')
+        # host = addr[0]
+        # path = ''
+        # for each in data:
+        #     path += f'/{each}'
+        print(self.recvall(socket))
+        parsed = urlparse(url)
+        host = parsed.hostname
+        path = parsed.path
+        code = 200
+        body = f"GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n"
+
+        print(body)
         return HTTPResponse(code, body)
 
-    def POST(self, url, args=None):
-        code = 500
-        body = ""
+    def POST(self, url, args):
+        data = url.split('/')
+        data = data[2:]
+        
+        addr = (data.pop(0)).split(':')
+        print(args)
+        host = addr[0]
+        path = ''
+        for each in data:
+            path += f'/{each}'
+        code = 200
+        body = f"POST {path} HTTP/1.0\r\nHost: {host}\r\n\r\n"
+        print(body)
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
