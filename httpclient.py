@@ -36,8 +36,22 @@ class HTTPResponse(object):
 
 class HTTPClient(object):
     def get_host_port(self,url):
-        
-        return (urlparse(url)).port
+        """ 
+        Gets a list containing host and port from url
+        If url does not contain port, use default HTTP port 80
+
+        Input: an address url
+        Output: (host, port)
+        """
+
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port
+
+        if not port:
+            port = 80
+
+        return [host, port]
 
 
     def connect(self, host, port):
@@ -46,13 +60,33 @@ class HTTPClient(object):
         return self.socket
 
     def get_code(self, data):
+        """ 
+        Parses the responses code given the response data
+
+        Input: Response data
+        Output: Response code
+        """
+
         return int((self.get_headers(data)[0]).split(' ')[1])
 
     def get_headers(self,data):
+        """ 
+        Parses the responses headers given the response data
+
+        Input: Response data
+        Output: Response headers
+        """
+
         return data.split('\r\n')[:-2]
 
     def get_body(self, data):
-        
+        """ 
+        Parses the responses body given the response data
+
+        Input: Response data
+        Output: Response body
+        """
+
         return data.split('\r\n')[-1]
     
     def sendall(self, data):
@@ -74,46 +108,59 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-       
+        """ 
+        Creates a GET request to the given URL
+
+        Input: URL
+        Output: The servers response to our request
+        """
+
+        # get path, host, port, parsed from url
         parsed = urlparse(url)
-        host = parsed.hostname
-        port = parsed.port
         path = parsed.path
-        body = f"GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n"
+        host_port = self.get_host_port(url)
         
-        if not port:
-            port = 80
-        if not path:
+        # if not path supplied, use default
+        if path == '':
             path = '/'
-        self.connect(host, port)
-        self.sendall(body)
+
+        # request being sent, setting path and host
+        request = f"GET {path} HTTP/1.0\r\nHost: {host_port[0]}\r\n\r\n"
+        
+        # connect to host, send request, and recieve the response data
+        self.connect(host_port[0], host_port[1])
+        self.sendall(request)
         data = self.recvall(self.socket)
         code = self.get_code(data)
+        body = self.get_body(data)
         
-        if code == 301 or code == 302:
-            self.sendall(data)
-            data = self.recvall(self.socket)
-            if url == 'http://slashdot.org':
-                print(data)
+        # shutdown socket and close connection
         self.socket.shutdown(socket.SHUT_WR)
         self.close()
     
-        if code == 404:
-            return HTTPResponse(code, "Error 404: Page Not Found")
-        else:
-            return HTTPResponse(code, body)
+        # return the response code and body from the server
+        return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
+        """ 
+        Creates a GET request to the given URL
+
+        Input: URL
+        Output: The servers response to our request
+        """
+
+        # get path, host, port, parsed from url
         parsed = urlparse(url)
-        # host = parsed.netloc
-        host = parsed.hostname
-        port = parsed.port
         path = parsed.path
-      
-        self.connect(host, port)
-        # if not port:
-        #     port = 80
-    
+        host_port = self.get_host_port(url)
+        
+        # if not path supplied, use default
+        if path == '':
+            path = '/'
+
+        # initialize parameters and length of body
+        # Adjust parameters into proper format: 'name=John&occupation=deer+hunter'
+        # replace '\r', '\n', ' ' characters for encoding
         params = ''
         length = 0
         if bool(args):
@@ -124,27 +171,27 @@ class HTTPClient(object):
                 value = (args[each]).replace('\r', '%0D').replace('\n', '%0A').replace(' ', '+')
                 params += value
             length = len(params)
-        else:
-            params = {}
-            length = None
+        
 
-        headers = f"POST {path} HTTP/1.0\r\n"
-        headers += f"Host: {host}\r\n"
-        headers += f"Content-Type: application/json\r\n"
+        # create request, setting path, host, content-type/length, and the body
+        headers = f"POST {path} HTTP/1.0\r\nHost: {host_port[0]}\r\n"
+        headers += f"Content-Type: application/x-www-form-urlencoded\r\n"
         headers += f"Content-Length: {length}\r\n\r\n"
         headers += f"{params}\r\n"
     
+        # connect to host, send request, and recieve the response data
+        self.connect(host_port[0], host_port[1])
         self.sendall(headers)
-        self.socket.shutdown(socket.SHUT_WR)
         data = self.recvall(self.socket)
         body = self.get_body(data)
         code = self.get_code(data)
+
+        # shutdown socket and close connection
+        self.socket.shutdown(socket.SHUT_WR)
         self.close()
-        
-        if code == 404:
-            return HTTPResponse(code, "Error 404: Page Not Found")
-        else:
-            return HTTPResponse(code, body)
+
+        # return the response code and body from the server
+        return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
