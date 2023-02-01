@@ -24,6 +24,7 @@ import socket
 import re
 # you may use urllib to encode data appropriately
 from urllib.parse import urlparse
+import json
 
 def help():
     print("httpclient.py [GET/POST] [URL]\n")
@@ -35,23 +36,24 @@ class HTTPResponse(object):
 
 class HTTPClient(object):
     def get_host_port(self,url):
-        return (socket.gethostbyname(url))
+        
+        return (urlparse(url)).port
 
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((host, port))
-        return None
+        return self.socket
 
     def get_code(self, data):
-        code = self.recvall(self.socket)
-        return code
+        return int((self.get_headers(data)[0]).split(' ')[1])
 
     def get_headers(self,data):
-        return None
+        return data.split('\r\n')[:-2]
 
     def get_body(self, data):
-        return None
+        
+        return data.split('\r\n')[-1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -72,40 +74,77 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-        # print('/////////')
-        # print(self.get_code(url))
-        # data = url.split('/')
-        # data = data[2:]
-        
-        # addr = (data.pop(0)).split(':')
-        # host = addr[0]
-        # path = ''
-        # for each in data:
-        #     path += f'/{each}'
-        print(self.recvall(socket))
+       
         parsed = urlparse(url)
         host = parsed.hostname
+        port = parsed.port
         path = parsed.path
-        code = 200
         body = f"GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n"
-
-        print(body)
-        return HTTPResponse(code, body)
-
-    def POST(self, url, args):
-        data = url.split('/')
-        data = data[2:]
         
-        addr = (data.pop(0)).split(':')
-        print(args)
-        host = addr[0]
-        path = ''
-        for each in data:
-            path += f'/{each}'
-        code = 200
-        body = f"POST {path} HTTP/1.0\r\nHost: {host}\r\n\r\n"
-        print(body)
-        return HTTPResponse(code, body)
+        if not port:
+            port = 80
+        if not path:
+            path = '/'
+        self.connect(host, port)
+        self.sendall(body)
+        data = self.recvall(self.socket)
+        code = self.get_code(data)
+        
+        if code == 301 or code == 302:
+            self.sendall(data)
+            data = self.recvall(self.socket)
+            if url == 'http://slashdot.org':
+                print(data)
+        self.socket.shutdown(socket.SHUT_WR)
+        self.close()
+    
+        if code == 404:
+            return HTTPResponse(code, "Error 404: Page Not Found")
+        else:
+            return HTTPResponse(code, body)
+
+    def POST(self, url, args=None):
+        parsed = urlparse(url)
+        # host = parsed.netloc
+        host = parsed.hostname
+        port = parsed.port
+        path = parsed.path
+      
+        self.connect(host, port)
+        # if not port:
+        #     port = 80
+    
+        params = ''
+        length = 0
+        if bool(args):
+            for each in args:
+                if len(params) != 0:
+                    params+='&'
+                params += each + '='
+                value = (args[each]).replace('\r', '%0D').replace('\n', '%0A').replace(' ', '+')
+                params += value
+            length = len(params)
+        else:
+            params = {}
+            length = None
+
+        headers = f"POST {path} HTTP/1.0\r\n"
+        headers += f"Host: {host}\r\n"
+        headers += f"Content-Type: application/json\r\n"
+        headers += f"Content-Length: {length}\r\n\r\n"
+        headers += f"{params}\r\n"
+    
+        self.sendall(headers)
+        self.socket.shutdown(socket.SHUT_WR)
+        data = self.recvall(self.socket)
+        body = self.get_body(data)
+        code = self.get_code(data)
+        self.close()
+        
+        if code == 404:
+            return HTTPResponse(code, "Error 404: Page Not Found")
+        else:
+            return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
